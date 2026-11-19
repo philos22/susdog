@@ -103,7 +103,15 @@ form.settings{display:grid;gap:14px;align-content:start}
 .switches button::after{content:"";position:absolute;left:6px;right:6px;height:38px;border-radius:4px;background:#5a2530;top:50px;transition:top .12s,background .12s}
 .switches button.on::after{top:6px;background:var(--ok)}
 
-#mapModal .panel{width:min(900px,100%);padding:14px}
+#mapModal{background:transparent;pointer-events:none}
+#mapModal .panel{pointer-events:auto;width:min(1080px,100%);padding:14px;background:color-mix(in srgb,var(--hull) 55%,transparent);box-shadow:none}
+#mapModal #mapCanvas{background:rgba(7,11,20,.35);opacity:.9}
+.mapgrid{display:grid;grid-template-columns:minmax(0,1fr) 210px;gap:12px;align-items:start}
+#mapTasks ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:7px;font-size:14px}
+#mapTasks li small{display:block;color:var(--dim);font-size:12px}
+#mapTasks li.done{color:var(--dim);text-decoration:line-through}
+#mapTasks .hint{font-size:12px;color:var(--dim);margin:8px 0 0}
+@media (max-width:720px){.mapgrid{grid-template-columns:1fr}}
 #mapCanvas{display:block;width:100%;height:auto;background:#070b14;border-radius:4px}
 .sabrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
 .sabrow button{background:color-mix(in srgb,var(--alarm) 20%,var(--plate));border:1px solid var(--alarm);border-radius:5px;padding:8px 12px;font-size:13px;letter-spacing:.06em}
@@ -242,7 +250,7 @@ form.settings{display:grid;gap:14px;align-content:start}
 
 <div id="taskModal" class="overlay" hidden><div class="panel"><div class="mhead"><div><div class="eyebrow" id="tmRoom"></div><h3 id="tmTitle"></h3></div><button class="close" id="tmClose" type="button">Close</button></div><div class="mg" id="tmBody"></div></div></div>
 <div id="miscModal" class="overlay" hidden><div class="panel"><div class="mhead"><div><div class="eyebrow" id="mmRoom"></div><h3 id="mmTitle"></h3></div><button class="close" id="mmClose" type="button">Close</button></div><div class="mg" id="mmBody"></div></div></div>
-<div id="mapModal" class="overlay" hidden><div class="panel"><div class="mhead"><div><div class="eyebrow">Freighter MRD-7</div><h3 id="mapTitle">Ship map</h3></div><button class="close" id="mapClose" type="button">Close</button></div><canvas id="mapCanvas" width="882" height="518"></canvas><div class="sabrow" id="sabrow" hidden><span class="eyebrow">Sabotage</span><button type="button" id="sLights">Cut lights</button><button type="button" id="sCore">Core meltdown</button><span class="eyebrow" id="sDoorHint">Tap a room to seal its doors</span></div></div></div>
+<div id="mapModal" class="overlay" hidden><div class="panel"><div class="mhead"><div><div class="eyebrow">Freighter MRD-7</div><h3 id="mapTitle">Ship map</h3></div><button class="close" id="mapClose" type="button">Close</button></div><div class="mapgrid"><canvas id="mapCanvas" width="882" height="518"></canvas><div id="mapTasks"></div></div><div class="sabrow" id="sabrow" hidden><span class="eyebrow">Sabotage</span><button type="button" id="sLights">Cut lights</button><button type="button" id="sCore">Core meltdown</button><span class="eyebrow" id="sDoorHint">Tap a room to seal its doors</span></div></div></div>
 
 <div id="meeting" class="overlay" hidden><div class="panel">
   <div class="mtop"><h2 id="mTitle">Emergency meeting</h2><span id="mtimer">0:60</span></div>
@@ -640,8 +648,8 @@ addEventListener('keydown',e=>{
  if(!G||G.phase!=='play')return;
  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();
  if(k==='escape'){closeModals();return;}
- if(!$('#mapModal').hidden){if(e.repeat)return;if(k==='x'||k==='m'||k==='tab'){e.preventDefault();closeModals();return;}
-  if(player.imp&&k==='l')$('#sLights').click();if(player.imp&&k==='c')$('#sCore').click();return;}
+ if(!$('#mapModal').hidden&&!modalOpen()){if(k==='x'||k==='m'||k==='tab'){e.preventDefault();if(!e.repeat)closeMap();return;}
+  if(player.imp&&(k==='l'||k==='c')){if(!e.repeat)$(k==='l'?'#sLights':'#sCore').click();return;}}
  if(modalOpen()){if(mgKey&&mgKey.down)mgKey.down(k,e);return;}
  if(player.inVent&&VENT_DIRS[k]){if(!e.repeat){const d=VENT_DIRS[k],o=ventToward(player.inVent,d[0],d[1]);if(o)crawlTo(o);}return;}
  if(k==='e')doUse();if(k==='r')doReport();if(k==='q')doKill();if(k==='v')doVent();if(k==='x'&&player.imp)openMap(true);if(k==='m'||k==='tab'){e.preventDefault();openMap(false);}
@@ -687,17 +695,18 @@ function showVentNav(){const nav=$('#ventnav');nav.innerHTML='';const v=player.i
   const b=document.createElement('button');b.type='button';b.textContent=(arrows?arrows+' ':'')+'Crawl to '+o.room;b.onclick=()=>crawlTo(o);nav.appendChild(b);}
  const x=document.createElement('button');x.type='button';x.textContent='Climb out (V)';x.onclick=doVent;nav.appendChild(x);nav.hidden=false;}
 $('#aUse').onclick=doUse;$('#aReport').onclick=doReport;$('#aKill').onclick=doKill;$('#aVent').onclick=doVent;$('#aSab').onclick=()=>openMap(true);
-$('#btnMap').onclick=()=>openMap(false);
-$('#btnTasks').onclick=()=>$('#tasklist').classList.toggle('collapsed');
+$('#btnMap').onclick=()=>{if($('#mapModal').hidden)openMap(false);else closeMap();};
+$('#btnTasks').onclick=()=>{if($('#mapModal').hidden)openMap(false);else closeMap();};
 
 /* ---------- Modals ---------- */
 let mgCleanup=null;
-const modalOpen=()=>!$('#taskModal').hidden||!$('#miscModal').hidden||!$('#mapModal').hidden;
+const modalOpen=()=>!$('#taskModal').hidden||!$('#miscModal').hidden;
+const closeMap=()=>{$('#mapModal').hidden=true;};
 let mgKey=null;
 const digit=k=>/^[1-9]$/.test(k)?+k:0;
 const kHeld=(...ks)=>ks.some(k=>keys[k]);
 function closeModals(){mgKey=null;if(mgCleanup){mgCleanup();mgCleanup=null;}$('#taskModal').hidden=true;$('#miscModal').hidden=true;$('#mapModal').hidden=true;player&&(player.scanning=0);if(G)setHold(null);miscKind=null;lightsRender=null;}
-$('#tmClose').onclick=closeModals;$('#mmClose').onclick=closeModals;$('#mapClose').onclick=closeModals;
+$('#tmClose').onclick=closeModals;$('#mmClose').onclick=closeModals;$('#mapClose').onclick=closeMap;
 function mkCanvas(el,w,h){const c=document.createElement('canvas');c.width=w;c.height=h;c.style.maxWidth=w+'px';el.appendChild(c);return c;}
 function ptr(c,e){const r=c.getBoundingClientRect();return{x:(e.clientX-r.left)*c.width/r.width,y:(e.clientY-r.top)*c.height/r.height};}
 function hint(el,t){const p=document.createElement('p');p.className='hint';p.textContent=t;el.appendChild(p);return p;}
@@ -716,7 +725,7 @@ const MG={
   c.onpointermove=e=>{if(drag){Object.assign(drag,ptr(c,e));draw();}};
   c.onpointerup=e=>{if(!drag)return;const p=ptr(c,e);for(let j=0;j<4;j++)if(p.x>250&&Math.abs(p.y-yy(j))<24&&R[j]===drag.i){conn[drag.i]=j;sfx('tick');}drag=null;draw();if(Object.keys(conn).length===4)done();};
   mgKey={down:k=>{const d=digit(k);if(!d||d>4)return;const i=d-1;
-   if(sel===null){if(conn[i]===undefined){sel=i;sfx('tick');}}
+   if(sel===null){if(conn[i]===undefined){sel=i;sfx('tick');}else sfx('err');}
    else{if(R[i]===sel&&!Object.values(conn).includes(i)){conn[sel]=i;sfx('tick');}else sfx('err');sel=null;if(Object.keys(conn).length===4)done();}draw();}};
   draw();hint(el,'Drag each conduit to the socket of the same color. Keyboard: press a wire number (1-4), then the number of its matching socket.');},
  sequence(el,done){const pad=document.createElement('div');pad.className='pad';el.appendChild(pad);const bs=[];for(let i=0;i<9;i++){const b=document.createElement('button');b.type='button';b.textContent=i+1;pad.appendChild(b);bs.push(b);}
@@ -760,11 +769,11 @@ const MG={
 let curTask=null;
 function openTask(t){
  mgKey=null;curTask=t;const st=t.st;$('#tmRoom').textContent=st.room;$('#tmTitle').textContent=st.name;const body=$('#tmBody');body.innerHTML='';
- $('#taskModal').hidden=false;document.activeElement&&document.activeElement.blur&&document.activeElement.blur();
+ $('#taskModal').hidden=false;closeMap();document.activeElement&&document.activeElement.blur&&document.activeElement.blur();
  const done=()=>{if(t.done)return;t.done=true;if(NET.mode==='client')netSend({t:'task',i:player.tasks.indexOf(t)});sfx('ok');updateTaskbar();renderTaskList();setTimeout(()=>{if(curTask===t){closeModals();}checkWin();},450);};
  mgCleanup=MG[st.type](body,done,st)||null;
 }
-function openMisc(room,title,build){mgKey=null;$('#mmRoom').textContent=room;$('#mmTitle').textContent=title;const b=$('#mmBody');b.innerHTML='';$('#miscModal').hidden=false;document.activeElement&&document.activeElement.blur&&document.activeElement.blur();mgCleanup=build(b)||null;}
+function openMisc(room,title,build){mgKey=null;$('#mmRoom').textContent=room;$('#mmTitle').textContent=title;const b=$('#mmBody');b.innerHTML='';$('#miscModal').hidden=false;closeMap();document.activeElement&&document.activeElement.blur&&document.activeElement.blur();mgCleanup=build(b)||null;}
 function openButton(){openMisc('Mess Hall','Emergency meeting',el=>{
  const blocked=G.sab&&G.sab.type==='core';const p=document.createElement('p');p.className='hint';
  const b=document.createElement('button');b.className='holdbtn';b.type='button';b.textContent='Call meeting';b.style.borderColor='var(--alarm)';
@@ -797,23 +806,30 @@ function coreHeld(k){if(NET.mode==='client')return !!(G.sab&&G.sab.held&&G.sab.h
 
 /* ---------- Map ---------- */
 let mapSab=false;
-function openMap(sab){mapSab=sab&&player.imp;$('#mapModal').hidden=false;$('#sabrow').hidden=!player.imp;$('#mapTitle').textContent=player.imp?'Ship map and sabotage':'Ship map';drawMap();}
+function openMap(sab){mapSab=sab&&player.imp;$('#mapModal').hidden=false;$('#sabrow').hidden=!player.imp;$('#mapTitle').textContent=player.imp?'Map, cover tasks and sabotage':'Map and tasks';lastMapTasks='';drawMap();}
 const mapCv=$('#mapCanvas'),mg=mapCv.getContext('2d');const MS=14,MOX=0,MOY=0;
 function drawMap(){
  mg.clearRect(0,0,mapCv.width,mapCv.height);
  for(let y=0;y<MH;y++)for(let x=0;x<MW;x++){if(!base[y*MW+x])continue;const r=roomIdx[y*MW+x];mg.fillStyle=r>=0?shade(ROOMS[r].c,.12):'#1a2337';if(grid[y*MW+x]===2)mg.fillStyle='#ff4d5e';mg.fillRect(MOX+x*MS,MOY+y*MS,MS,MS);}
  mg.font='600 13px "Chakra Petch", sans-serif';mg.textAlign='center';
  for(const r of ROOMS){const cd=(G.doorCd[r.key]||0);mg.fillStyle='rgba(231,237,248,.85)';mg.fillText(r.name.toUpperCase(),(r.x+r.w/2)*MS,(r.y+r.h/2)*MS+4);if(player.imp&&cd>0){mg.fillStyle='#ff9aa4';mg.fillText(`doors ${Math.ceil(cd)}s`,(r.x+r.w/2)*MS,(r.y+r.h/2)*MS+20);}}
- if(!player.imp)for(const t of player.tasks)if(!t.done){mg.fillStyle='#ffb53d';mg.beginPath();mg.arc(t.st.x/T*MS,t.st.y/T*MS,5,0,7);mg.fill();}
+ for(const t of player.tasks)if(!t.done){mg.fillStyle='#ffb53d';mg.beginPath();mg.arc(t.st.x/T*MS,t.st.y/T*MS,5,0,7);mg.fill();}
  if(G.sab){const p=G.sab.type==='lights'?[LIGHTS]:[CORE.A,CORE.B];mg.fillStyle=(performance.now()/300|0)%2?'#ff4d5e':'#7d1f2a';for(const q of p){mg.beginPath();mg.arc(q.x/T*MS,q.y/T*MS,7,0,7);mg.fill();}}
  if(player.imp){mg.fillStyle='#ff4d5e88';for(const v of VENTS){mg.fillRect(v.x/T*MS-3,v.y/T*MS-3,6,6);}}
  drawDrone(mg,player.x/T*MS,player.y/T*MS,player.color,{s:.7,alpha:player.alive?1:.6});
- const can=G.sabCd<=0&&!G.sab;$('#sLights').disabled=!can;$('#sCore').disabled=!can;
- $('#sLights').textContent=G.sabCd>0&&!G.sab?`Cut lights in ${Math.ceil(G.sabCd)}s`:'Cut lights (L)';$('#sCore').textContent=G.sabCd>0&&!G.sab?`Core meltdown in ${Math.ceil(G.sabCd)}s`:'Core meltdown (C)';
+ drawMapTasks();const duct=!!player.inVent,can=G.sabCd<=0&&!G.sab&&!duct;$('#sLights').disabled=!can;$('#sCore').disabled=!can;
+ $('#sDoorHint').textContent=duct?'Leave the duct to sabotage':'Tap a room to seal its doors';
+ $('#sLights').textContent=duct?'Cut lights':G.sabCd>0&&!G.sab?`Cut lights in ${Math.ceil(G.sabCd)}s`:'Cut lights (L)';$('#sCore').textContent=duct?'Core meltdown':G.sabCd>0&&!G.sab?`Core meltdown in ${Math.ceil(G.sabCd)}s`:'Core meltdown (C)';
 }
-$('#sLights').onclick=()=>{if(sabotage('lights'))closeModals();};
-$('#sCore').onclick=()=>{if(sabotage('core'))closeModals();};
-mapCv.addEventListener('click',e=>{if(!player.imp)return;const p=ptr(mapCv,e);const r=roomAt(p.x/MS*T,p.y/MS*T);if(r){if(sabotage('doors',r))toast(`${r.name} doors sealed for 10 s`);drawMap();}});
+// no sabotage from inside a duct
+function playerSab(type,room){if(!player.imp)return false;if(player.inVent){toast("You can't sabotage from inside a duct.");sfx('err');return false;}return sabotage(type,room);}
+let lastMapTasks='';
+function drawMapTasks(){const imp=player.imp;
+ const h=`<div class="eyebrow">${imp?'Cover tasks (fake)':'Your tasks'}</div><ul>`+player.tasks.map(t=>`<li class="${t.done&&!imp?'done':''}">${esc(t.st.name)}<small>${esc(t.st.room)}</small></li>`).join('')+'</ul>'+(imp?'<p class="hint">You can\'t complete these. Stand near one to look busy.</p>':'');
+ if(h!==lastMapTasks){lastMapTasks=h;$('#mapTasks').innerHTML=h;}}
+$('#sLights').onclick=()=>{if(playerSab('lights')){toast('Lights cut');drawMap();}};
+$('#sCore').onclick=()=>{if(playerSab('core')){toast('Core meltdown started');drawMap();}};
+mapCv.addEventListener('click',e=>{if(!player.imp)return;const p=ptr(mapCv,e);const r=roomAt(p.x/MS*T,p.y/MS*T);if(r){if(playerSab('doors',r))toast(`${r.name} doors sealed for 10 s`);drawMap();}});
 
 /* ---------- Meetings ---------- */
 function callMeeting(caller,kind,body){
@@ -1296,7 +1312,7 @@ function onClientMsg(e,m){
  case 'button':if(play&&e.alive&&e.button>0&&!(G.sab&&G.sab.type==='core')&&dist(e,BUTTON)<3*T){e.button--;callMeeting(e,'button');}break;
  case 'vent':if(!play||!e.imp||!e.alive)return;if(e.inVent)exitVent(e);else{const v=VENTS.find(v=>dist(e,v)<1.6*T);if(v)enterVent(e,v);}break;
  case 'crawl':{const o=VENTS[m.v];if(play&&e.inVent&&o&&o.g===e.inVent.g&&o!==e.inVent){e.inVent=o;e.x=o.x;e.y=o.y;e.tp++;}break;}
- case 'sab':if(!play||!e.imp)return;if(m.type==='doors'){const r=ROOMS.find(r=>r.key===m.room);if(r)sabotage('doors',r);}else if(m.type==='lights'||m.type==='core')sabotage(m.type);break;
+ case 'sab':if(!play||!e.imp||e.inVent)return;if(m.type==='doors'){const r=ROOMS.find(r=>r.key===m.room);if(r)sabotage('doors',r);}else if(m.type==='lights'||m.type==='core')sabotage(m.type);break;
  case 'flip':if(play&&G.sab&&G.sab.type==='lights'&&e.alive&&dist(e,LIGHTS)<2.5*T&&G.sab.sw[m.i]!==undefined)G.sab.sw[m.i]=!!m.on;break;
  case 'restore':if(play&&G.sab&&G.sab.type==='lights'&&e.alive&&dist(e,LIGHTS)<2.5*T&&G.sab.sw.every(Boolean))fixLights();break;
  case 'hold':if(G.sab&&G.sab.type==='core'){if(m.k==='A'||m.k==='B')G.sab.holds[e.id]=m.k;else delete G.sab.holds[e.id];}break;
