@@ -221,12 +221,12 @@ form.settings{display:grid;gap:14px;align-content:start}
       <div class="field"><label for="pname">Your call sign</label><input type="text" id="pname" maxlength="12" value="Nova" autocomplete="off"></div>
       <div class="field"><span class="lab">Hull color</span><div class="swatches" id="swatches"></div></div>
       <div class="row2">
-        <div class="field"><label for="pcount">Drones aboard</label><select id="pcount"><option>5</option><option>6</option><option>7</option><option selected>8</option><option>9</option><option>10</option></select></div>
+        <div class="field"><label for="pcount">Drones aboard</label><select id="pcount"><option>5</option><option>6</option><option>7</option><option selected>8</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option><option>15</option></select></div>
         <div class="field"><label for="icount">Saboteurs</label><select id="icount"><option selected>1</option><option>2</option></select></div>
       </div>
       <div class="row2">
         <div class="field"><label for="kcd">Kill cooldown</label><select id="kcd"><option value="20">20 s</option><option value="25" selected>25 s</option><option value="35">35 s</option></select></div>
-        <div class="field"><label for="tcount">Tasks each</label><select id="tcount"><option>4</option><option selected>5</option><option>6</option><option>7</option></select></div>
+        <div class="field"><label for="tcount">Tasks each</label><select id="tcount"><option selected>8</option><option>9</option><option>10</option><option>11</option><option>12</option></select></div>
       </div>
       <div class="field"><label for="role">Your role</label><select id="role"><option value="random" selected>Random</option><option value="crew">Crew</option><option value="imp">Saboteur</option></select></div>
       <label class="check"><input type="checkbox" id="confirm" checked> Reveal roles when someone is ejected</label>
@@ -380,7 +380,7 @@ function astar(sx,sy,tx,ty){
 }
 
 /* ---------- Colors & drone art ---------- */
-const COLORS=[{n:'Coral',c:'#ff6b5b'},{n:'Cobalt',c:'#3d6bff'},{n:'Moss',c:'#46a84a'},{n:'Rose',c:'#ff7ac8'},{n:'Amber',c:'#ff9f1c'},{n:'Lemon',c:'#f2dc3d'},{n:'Slate',c:'#66718a'},{n:'Pearl',c:'#e8ecf2'},{n:'Violet',c:'#9b5de5'},{n:'Umber',c:'#8d5a3b'},{n:'Teal',c:'#1fc8b8'},{n:'Lime',c:'#b6f23d'}];
+const COLORS=[{n:'Coral',c:'#ff6b5b'},{n:'Cobalt',c:'#3d6bff'},{n:'Moss',c:'#46a84a'},{n:'Rose',c:'#ff7ac8'},{n:'Amber',c:'#ff9f1c'},{n:'Lemon',c:'#f2dc3d'},{n:'Slate',c:'#66718a'},{n:'Pearl',c:'#e8ecf2'},{n:'Violet',c:'#9b5de5'},{n:'Umber',c:'#8d5a3b'},{n:'Teal',c:'#1fc8b8'},{n:'Lime',c:'#b6f23d'},{n:'Crimson',c:'#c0182c'},{n:'Sky',c:'#8fd3ff'},{n:'Onyx',c:'#2f3140'}];
 function shade(hex,a){const n=parseInt(hex.slice(1),16);let r=n>>16,g=n>>8&255,b=n&255;const f=a<0?0:255,p=Math.abs(a);r=Math.round((f-r)*p+r);g=Math.round((f-g)*p+g);b=Math.round((f-b)*p+b);return`rgb(${r},${g},${b})`;}
 function rr(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
 function drawDrone(g,x,y,col,o={}){
@@ -459,7 +459,7 @@ function drawWorld(){
 }
 
 /* ---------- Game state ---------- */
-const S={players:8,imps:1,killCd:25,tasks:5,confirm:true,role:'random',name:'Nova',color:1};
+const S={players:8,imps:1,killCd:25,tasks:8,confirm:true,role:'random',name:'Nova',color:1};
 let G=null, player=null;
 const SPEED={player:4.3*T,bot:3.7*T,ghost:5.6*T};
 function crewVision(){return G.sab&&G.sab.type==='lights'?1.7:4.4;}
@@ -475,7 +475,7 @@ function newGame(humans){
  humans=humans||[{name:S.name||'Nova',color:S.color}];
  const used=new Set(humans.map(h=>h.color)),cols=shuffle(COLORS.filter((_,i)=>!used.has(i)));
  const ents=humans.map((h,i)=>{const e=mkEnt(i,COLORS[h.color],h.name,false);e.conn=h.conn||null;return e;});player=ents[0];
- const total=Math.min(10,Math.max(S.players,humans.length));
+ const total=Math.min(15,Math.max(S.players,humans.length));
  for(let i=humans.length;i<total;i++){const c=cols[i-humans.length];ents.push(mkEnt(i,c,c.n,true));}
  const imps=Math.min(S.imps,total>=7?2:1);
  let pool=ents.slice();
@@ -1246,7 +1246,7 @@ function setRoomUI(){
 function renderRoster(list){const ul=$('#roster');ul.innerHTML='';for(const p of list){const li=document.createElement('li');li.innerHTML=`<i style="background:${COLORS[p.color].c}"></i>${esc(p.name)}${p.host?' <small>(host)</small>':''}`;ul.appendChild(li);}}
 function lobbyAll(){const list=NET.members.map(x=>({name:x.name,color:x.color,host:!x.conn}));renderRoster(list);
  for(const x of NET.members)if(x.conn&&x.conn.open)x.conn.send({t:'lobby',players:list});
- if(NET.mode==='host')netMsg(`${NET.members.length} of 10 seats taken. Share the code with friends; bots fill the rest.`);}
+ if(NET.mode==='host')netMsg(`${NET.members.length} of 15 seats taken. Share the code with friends; bots fill the rest.`);}
 function wakeAudio(){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();AC.resume();}catch(_){}}
 function leaveRoom(msg){
  const peer=NET.peer;Object.assign(NET,{mode:'solo',peer:null,conn:null,code:'',members:[]});try{if(peer)peer.destroy();}catch(_){}
@@ -1270,7 +1270,7 @@ function hostData(conn,d){
  if(!d||typeof d!=='object')return;
  const mb=NET.members.find(x=>x.conn===conn);if(mb)mb.seen=performance.now();
  if(d.t==='hello'){if(NET.members.some(x=>x.conn===conn))return;
-  if(NET.members.length>=10){conn.send({t:'full'});setTimeout(()=>conn.close(),300);return;}
+  if(NET.members.length>=15){conn.send({t:'full'});setTimeout(()=>conn.close(),300);return;}
   let name=String(d.name||'Drone').replace(/[<>]/g,'').trim().slice(0,12)||'Drone';
   if(COLORS.some(c=>c.n.toLowerCase()===name.toLowerCase()))name=name.slice(0,10)+'-1';
   const base=name.slice(0,10);for(let n=2;NET.members.some(x=>x.name.toLowerCase()===name.toLowerCase());n++)name=base+'-'+n;
