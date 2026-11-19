@@ -1,3 +1,8 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Meridian Mutiny</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -118,7 +123,9 @@ form.settings{display:grid;gap:14px;align-content:start}
 .card .chips{display:flex;gap:3px;flex-wrap:wrap;margin-top:3px}
 .chip{width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.5)}
 .card .imp{color:var(--alarm)}
-.mid{display:grid;grid-template-columns:1fr;min-height:0}
+.mid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:10px;min-height:0}
+#meetMap{width:100%;height:auto;align-self:start;background:var(--void);border:1px solid var(--line);border-radius:6px}
+@media (max-width:640px){#meeting .panel{grid-template-rows:none;overflow:auto;padding:12px}#cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.mid{grid-template-columns:1fr;grid-template-rows:auto auto}#chat{max-height:32vh}}
 #chat{overflow:auto;border:1px solid var(--line);border-radius:6px;background:var(--void);padding:8px 10px;display:grid;gap:6px;align-content:start;min-height:120px;font-size:14.5px;line-height:1.35}
 #chat .msg{display:grid;grid-template-columns:22px 1fr;gap:8px;align-items:start}
 #chat .msg img{width:22px;height:22px}
@@ -156,7 +163,12 @@ form.settings{display:grid;gap:14px;align-content:start}
 #roster i{width:10px;height:10px;border-radius:50%;display:inline-block}
 #netMsg{margin:0;color:var(--dim);font-size:13px;line-height:1.4}
 #overWait{color:var(--dim);margin:0}
+#keyviz{position:absolute;left:50%;bottom:calc(14px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);display:flex;gap:4px;align-items:center;pointer-events:none!important;font-family:var(--display);font-size:11px;letter-spacing:.08em;color:var(--dim);opacity:.85}
+#keyviz kbd{min-width:22px;padding:3px 6px;border:1px solid var(--line);border-radius:4px;background:var(--plate);color:var(--ink);text-align:center;font:inherit}
+@media (max-width:560px){#keyviz{bottom:calc(170px + env(safe-area-inset-bottom,0px))}}
 </style>
+</head>
+<body>
 
 <canvas id="game"></canvas>
 
@@ -166,6 +178,7 @@ form.settings{display:grid;gap:14px;align-content:start}
   <div id="topright"><button class="iconbtn" id="btnTasks" type="button">Tasks</button><button class="iconbtn" id="btnMap" type="button">Map</button><button class="iconbtn" id="btnSound" type="button">Sound on</button></div>
   <div id="alert" hidden></div>
   <div id="ventnav" hidden></div>
+  <div id="keyviz" aria-hidden="true"></div>
   <div id="toast" class="panel" hidden></div>
   <div id="actions">
     <button class="act kill" id="aKill" type="button" hidden>Kill<kbd>Q</kbd></button>
@@ -230,7 +243,7 @@ form.settings{display:grid;gap:14px;align-content:start}
 <div id="meeting" class="overlay" hidden><div class="panel">
   <div class="mtop"><h2 id="mTitle">Emergency meeting</h2><span id="mtimer">0:60</span></div>
   <div id="cards"></div>
-  <div class="mid"><div id="chat" aria-live="polite"></div></div>
+  <div class="mid"><canvas id="meetMap" width="630" height="370" role="img" aria-label="Ship map"></canvas><div id="chat" aria-live="polite"></div></div>
   <div class="mbottom"><form id="chatForm"><input id="chatIn" type="text" maxlength="90" placeholder="Ask: where were you? who did you see? who do you suspect?" autocomplete="off"><button class="secondary" type="submit">Send</button></form><div id="voteBar"><button class="secondary" id="vSkip" type="button">Skip vote</button></div></div>
 </div></div>
 
@@ -293,7 +306,7 @@ const STATIONS=[
  {type:'clear',name:'Tidy bunk lockers',x:59.5,y:31.5},
  {type:'sequence',name:'Reset life-support panel',x:52.5,y:31.5},
 ];
-const DUR={wires:5,clear:6,sequence:7,tune:5,hold:6,align:4,scan:9};
+const DUR={wires:5,clear:6,sequence:5,tune:5,hold:6,align:4,scan:9};
 const VENTS=[
  {x:1.5,y:20.5,g:0},{x:1.5,y:31.5,g:0},{x:14.5,y:30.5,g:0},{x:8.5,y:1.5,g:1},{x:25.5,y:5.5,g:1},{x:53.5,y:7.5,g:1},{x:48.5,y:20.5,g:2},{x:60.5,y:25.5,g:2},{x:48.5,y:32.5,g:2},
 ];
@@ -605,9 +618,19 @@ function perceive(){
 
 /* ---------- Input ---------- */
 const keys={};let joy=null;
+// read keys by physical position, so press and release always match whatever the keyboard layout or input method
+function keyName(e){const c=e.code||'';
+ if(/^Key[A-Z]$/.test(c))return c.slice(3).toLowerCase();
+ if(/^(Digit|Numpad)[0-9]$/.test(c))return c.slice(-1);
+ if(c.startsWith('Arrow'))return c.toLowerCase();
+ if(c==='Space')return ' ';if(c==='Enter'||c==='NumpadEnter')return 'enter';if(c==='Escape')return 'escape';if(c==='Tab')return 'tab';
+ return (e.key||'').toLowerCase();}
+function clearKeys(){for(const k in keys)keys[k]=false;}
 addEventListener('keydown',e=>{
- if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;
- const k=e.key.toLowerCase();keys[k]=true;
+ // a hidden text box that kept focus after a meeting must not swallow game keys
+ if((e.target.tagName==='INPUT'||e.target.tagName==='SELECT')&&e.target.offsetParent===null)e.target.blur();
+ else if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT')return;
+ const k=keyName(e);keys[k]=true;
  if(!G||G.phase!=='play')return;
  if(['arrowup','arrowdown','arrowleft','arrowright',' '].includes(k))e.preventDefault();
  if(k==='escape'){closeModals();return;}
@@ -617,8 +640,10 @@ addEventListener('keydown',e=>{
  if(player.inVent&&VENT_DIRS[k]){if(!e.repeat){const d=VENT_DIRS[k],o=ventToward(player.inVent,d[0],d[1]);if(o)crawlTo(o);}return;}
  if(k==='e')doUse();if(k==='r')doReport();if(k==='q')doKill();if(k==='v')doVent();if(k==='x'&&player.imp)openMap(true);if(k==='m'||k==='tab'){e.preventDefault();openMap(false);}
 });
-addEventListener('keyup',e=>{const k=e.key.toLowerCase();keys[k]=false;if(mgKey&&mgKey.up)mgKey.up(k);});
-addEventListener('blur',()=>{for(const k in keys)keys[k]=false;});
+addEventListener('keyup',e=>{const k=keyName(e);keys[k]=false;if(mgKey&&mgKey.up)mgKey.up(k);});
+addEventListener('blur',clearKeys);
+document.addEventListener('visibilitychange',clearKeys);
+document.addEventListener('focusin',e=>{if(e.target.tagName==='INPUT')clearKeys();});
 const cv=$('#game'),ctx=cv.getContext('2d');const stick=$('#stick');
 cv.addEventListener('pointerdown',e=>{if(!G||G.phase!=='play'||modalOpen())return;if(e.pointerType==='mouse')return;joy={id:e.pointerId,x:e.clientX,y:e.clientY,dx:0,dy:0};stick.hidden=false;stick.style.left=e.clientX+'px';stick.style.top=e.clientY+'px';stick.firstChild.style.transform='';cv.setPointerCapture(e.pointerId);});
 cv.addEventListener('pointermove',e=>{if(!joy||e.pointerId!==joy.id)return;let dx=e.clientX-joy.x,dy=e.clientY-joy.y;const d=Math.hypot(dx,dy),m=45;if(d>m){dx*=m/d;dy*=m/d;}joy.dx=dx/m;joy.dy=dy/m;stick.firstChild.style.transform=`translate(${dx}px,${dy}px)`;});
@@ -689,13 +714,13 @@ const MG={
    else{if(R[i]===sel&&!Object.values(conn).includes(i)){conn[sel]=i;sfx('tick');}else sfx('err');sel=null;if(Object.keys(conn).length===4)done();}draw();}};
   draw();hint(el,'Drag each conduit to the socket of the same color. Keyboard: press a wire number (1-4), then the number of its matching socket.');},
  sequence(el,done){const pad=document.createElement('div');pad.className='pad';el.appendChild(pad);const bs=[];for(let i=0;i<9;i++){const b=document.createElement('button');b.type='button';b.textContent=i+1;pad.appendChild(b);bs.push(b);}
-  const h=hint(el,'Watch the pattern, then repeat it.');let round=0,seq=[],inp=[],busy=true,timers=[];const lens=[3,4,5];
-  const play=()=>{busy=true;inp=[];seq=Array.from({length:lens[round]},()=>Math.floor(Math.random()*9));h.textContent=`Watch the pattern (stage ${round+1} of 3)`;
-   seq.forEach((n,i)=>{timers.push(setTimeout(()=>{bs[n].classList.add('lit');sfx('tick');},500+i*520));timers.push(setTimeout(()=>bs[n].classList.remove('lit'),500+i*520+340));});
-   timers.push(setTimeout(()=>{busy=false;h.textContent='Your turn (click or press 1-9)';},500+seq.length*520));};
+  const h=hint(el,'Watch the pattern, then repeat it.');let round=0,seq=[],inp=[],busy=true,timers=[];const lens=[3,4];
+  const play=()=>{busy=true;inp=[];seq=Array.from({length:lens[round]},()=>Math.floor(Math.random()*9));h.textContent=`Watch the pattern (stage ${round+1} of ${lens.length})`;
+   seq.forEach((n,i)=>{timers.push(setTimeout(()=>{bs[n].classList.add('lit');sfx('tick');},500+i*700));timers.push(setTimeout(()=>bs[n].classList.remove('lit'),500+i*700+480));});
+   timers.push(setTimeout(()=>{busy=false;h.textContent='Your turn (click or press 1-9)';},500+seq.length*700));};
   bs.forEach((b,i)=>b.onclick=()=>{if(busy)return;b.classList.add('lit');setTimeout(()=>b.classList.remove('lit'),150);inp.push(i);const k=inp.length-1;
    if(inp[k]!==seq[k]){sfx('err');h.textContent='Wrong. Watch again.';busy=true;timers.push(setTimeout(play,700));return;}
-   if(inp.length===seq.length){round++;sfx('ok');if(round>=3)done();else{busy=true;timers.push(setTimeout(play,600));}}});
+   if(inp.length===seq.length){round++;sfx('ok');if(round>=lens.length)done();else{busy=true;timers.push(setTimeout(play,600));}}});
   mgKey={down:k=>{const d=digit(k);if(d)bs[d-1].onclick();}};
   play();return()=>timers.forEach(clearTimeout);},
  hold(el,done,st){const b=document.createElement('button');b.className='holdbtn';b.type='button';b.textContent='Hold to transfer';el.appendChild(b);const pr=document.createElement('div');pr.className='prog';pr.innerHTML='<div></div>';el.appendChild(pr);
@@ -837,13 +862,26 @@ function postLine(l){
  if(l.claim&&l.who.imp&&!m.caught[l.who.id]){for(const w of shuffle(G.ents.filter(w=>w.isBot&&w.alive&&!w.imp&&w!==l.who))){const sg=sightings(w,l.who,m.refT-4,m.refT+4).find(q=>roomName(q.x,q.y)!==l.claim);if(sg){m.caught[l.who.id]=1;const r=roomName(sg.x,sg.y);w.sus[l.who.id]+=40;m.lines.splice(m.li,0,{who:w,text:`That's not true. I saw ${l.who.name} in ${r}, not ${l.claim}.`,acc:l.who.id,str:35});break;}}}
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+// compact labeled ship map on the voting screen; the room with the reported body is outlined
+function drawMeetMap(){const c=$('#meetMap'),g=c.getContext('2d'),K=c.width/MW;g.clearRect(0,0,c.width,c.height);
+ g.fillStyle='#1a2337';for(const k of CORRS)g.fillRect(k[0]*K,k[1]*K,k[2]*K,k[3]*K);
+ const br=G.meet&&G.meet.body?G.meet.body.room:null;
+ for(const r of ROOMS){const X=r.x*K,Y=r.y*K,Wd=r.w*K,Hd=r.h*K;g.fillStyle=shade(r.c,.12);g.fillRect(X,Y,Wd,Hd);
+  if(r.name===br){g.strokeStyle='#ff4d5e';g.lineWidth=4;g.strokeRect(X+2,Y+2,Wd-4,Hd-4);}
+  const n=r.name.toUpperCase(),maxW=Wd-10,font=f=>`600 ${f}px "Chakra Petch", sans-serif`;
+  g.font=font(18);let lines=g.measureText(n).width>maxW?n.split(' '):[n],fs=18;
+  const widest=()=>Math.max(...lines.map(l=>(g.font=font(fs),g.measureText(l).width)));while(fs>11&&widest()>maxW)fs--;
+  g.font=font(fs);g.fillStyle='rgba(231,237,248,.92)';g.textAlign='center';g.textBaseline='middle';
+  lines.forEach((l,i)=>g.fillText(l,X+Wd/2,Y+Hd/2+(i-(lines.length-1)/2)*fs*1.15));
+  if(r.name===br){g.font=font(12);g.fillStyle='#ff8a96';g.fillText('BODY FOUND',X+Wd/2,Y+Hd-12);}}}
 function sysLine(t){const d=document.createElement('div');d.className='sys';d.textContent=t;$('#chat').appendChild(d);$('#chat').scrollTop=1e9;}
 function renderMeeting(){
+ clearKeys();joy=null;$('#stick').hidden=true;$('#chatIn').value='';
  const m=G.meet;$('#meeting').hidden=false;$('#chat').innerHTML='';
  $('#mTitle').textContent=m.kind==='body'?`${m.caller.name} found ${m.body.name}'s body`:`${m.caller.name} called a meeting`;
  sysLine(m.kind==='body'?`Body reported in ${m.body.room}. Discuss, then vote.`:'Emergency meeting. Discuss, then vote.');
  if(!player.alive)sysLine('You are a ghost. You can watch but not vote or speak.');
- renderCards();$('#chatIn').disabled=!player.alive;$('#vSkip').disabled=!player.alive;
+ drawMeetMap();renderCards();$('#chatIn').disabled=!player.alive;$('#vSkip').disabled=!player.alive;
 }
 function renderCards(){
  const m=G.meet;const box=$('#cards');box.innerHTML='';
@@ -952,6 +990,7 @@ function showEject(ej,why){
  playEject(ej,line1,line2,afterMeeting);
 }
 function playEject(ej,line1,line2,after){
+ $('#chatIn').blur();clearKeys();
  G.phase='eject';$('#eject').hidden=false;const txt=$('#ejectTxt');txt.textContent='';
  const stars=Array.from({length:160},()=>({x:Math.random(),y:Math.random(),z:rand(.2,1)}));let t=0,typed=0;
  const full=line1;
@@ -1003,7 +1042,12 @@ function renderTaskList(){
  $('#roleHint').textContent=player.imp?`These are cover tasks; you cannot complete them. Stand near one to look busy.${mates.length?' Partner: '+mates.join(', ')+'.':''}`:(player.alive?'':'You are a ghost. Finish your tasks to help the crew win.');
 }
 let toastT=0;function toast(t){const el=$('#toast');el.textContent=t;el.hidden=false;toastT=2.2;}
+const KEY_LABELS={w:'W',a:'A',s:'S',d:'D',arrowup:'\u2191',arrowdown:'\u2193',arrowleft:'\u2190',arrowright:'\u2192',e:'E',r:'R',q:'Q',v:'V',x:'X',' ':'Space'};
+let lastKeyviz='';
+function drawKeyviz(){const held=Object.keys(KEY_LABELS).filter(k=>keys[k]).map(k=>KEY_LABELS[k]);if(joy)held.push('Touch stick');
+ const h=held.length?'<span>Input</span>'+held.map(t=>`<kbd>${t}</kbd>`).join(''):'<span>No keys held</span>';if(h!==lastKeyviz){lastKeyviz=h;$('#keyviz').innerHTML=h;}}
 function hudUpdate(){
+ drawKeyviz();
  if(lightsRender&&G.sab&&G.sab.sw&&JSON.stringify(G.sab.sw)!==lastSw)lightsRender();
  const u=nearUse(),b=nearBody(),v=nearVictim(),vt=nearVent();
  $('#aUse').disabled=!u;$('#aReport').disabled=!b;
@@ -1380,3 +1424,5 @@ if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{drawWorld
 requestAnimationFrame(frame);
 })();
 </script>
+</body>
+</html>
