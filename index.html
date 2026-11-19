@@ -1156,7 +1156,7 @@ function netAll(m){if(NET.mode!=='host')return;const cs=G?G.ents.map(e=>e.conn):
 function netMsg(t){$('#netMsg').textContent=t;}
 function netErr(err){const t=err&&err.type;
  if(t==='peer-unavailable')return 'No room with that code. Check it and try again.';
- if(t==='network'||t==='server-error'||t==='socket-error'||t==='socket-closed')return "Couldn't reach the matchmaking server. Check your internet connection.";
+ if(t==='network'||t==='server-error'||t==='socket-error'||t==='socket-closed')return "Couldn't reach the matchmaking server (0.peerjs.com). An ad blocker, VPN, network filter or in-app browser may be blocking it. Try a regular browser window, or another network.";
  if(t==='browser-incompatible')return 'This browser does not support online play.';
  return 'Connection problem: '+(t||err);}
 function setRoomUI(){
@@ -1183,6 +1183,7 @@ function hostRoom(){
  peer.on('open',()=>{if(NET.peer!==peer)return;Object.assign(NET,{mode:'host',code,members:[{name:S.name,color:S.color,conn:null}]});setRoomUI();lobbyAll();});
  peer.on('connection',conn=>{conn.on('data',d=>hostData(conn,d));conn.on('close',()=>hostDrop(conn));conn.on('error',()=>hostDrop(conn));});
  peer.on('disconnected',()=>{if(NET.peer===peer&&NET.mode==='host')try{peer.reconnect();}catch(_){}});
+ peer.on('open',()=>{if(NET.peer===peer&&NET.mode==='host')lobbyAll();});
  peer.on('error',err=>{if(NET.peer!==peer)return;
   if(NET.mode!=='host'){if(err.type==='unavailable-id'){peer.destroy();NET.peer=null;hostRoom();}else leaveRoom(netErr(err));return;}
   if(err.type!=='peer-unavailable')netMsg(netErr(err));});
@@ -1258,19 +1259,30 @@ function sendSnaps(){
 /* client side: a mirror of the host's game, enough to draw and act */
 function joinRoom(){
  const code=$('#joinCode').value.trim().toUpperCase();if(!/^[A-Z0-9]{5}$/.test(code)){netMsg('Enter the 5-character room code.');return;}
- S.name=($('#pname').value.trim()||'Nova').slice(0,12);netMsg('Connecting…');
- const peer=new Peer({debug:0});NET.peer=peer;
- peer.on('open',()=>{if(NET.peer!==peer)return;const conn=peer.connect(PEER_PREFIX+code,{reliable:true,serialization:'json'});NET.conn=conn;
-  const to=setTimeout(()=>{if(NET.peer===peer&&NET.mode!=='client')leaveRoom("Couldn't connect to that room. The host may be offline, or a network is blocking the connection.");},15000);
-  conn.on('open',()=>{clearTimeout(to);conn.send({t:'hello',name:S.name,color:S.color});});
-  conn.on('data',clientData);
-  conn.on('close',()=>{if(NET.peer===peer)leaveRoom('Lost connection to the host.');});});
- peer.on('error',err=>{if(NET.peer===peer)leaveRoom(netErr(err));});
+ if(NET.peer){try{NET.peer.destroy();}catch(_){}NET.peer=null;}
+ S.name=($('#pname').value.trim()||'Nova').slice(0,12);
+ // report which step stalled, so a failed join explains itself
+ let stage=0;const say=(n,t)=>{stage=n;netMsg(t);};
+ say(0,'Reaching the matchmaking server…');
+ const peer=new Peer({debug:1});NET.peer=peer;
+ const fail=t=>{if(NET.peer===peer)leaveRoom(t);};
+ const to=setTimeout(()=>{if(NET.peer!==peer||NET.mode==='client')return;
+  fail(['Couldn\'t reach the matchmaking server (0.peerjs.com). An ad blocker, VPN, network filter or in-app browser may be blocking it. Try a regular browser window, or another network.',
+   'Found the room but couldn\'t connect to the host. The network may be blocking direct connections; try a phone hotspot.',
+   'Connected, but the host didn\'t answer. Ask the host to check their game tab is still open.'][stage]);},15000);
+ peer.on('open',()=>{if(NET.peer!==peer)return;say(1,'Connecting to the host…');
+  const conn=peer.connect(PEER_PREFIX+code,{reliable:true,serialization:'json'});NET.conn=conn;
+  conn.on('open',()=>{say(2,'Joining the room…');conn.send({t:'hello',name:S.name,color:S.color});});
+  conn.on('data',d=>{if(d&&d.t==='welcome')clearTimeout(to);clientData(d);});
+  conn.on('close',()=>{clearTimeout(to);fail(NET.mode==='client'?'Lost connection to the host.':'The host closed the connection.');});
+  conn.on('error',err=>console.warn('connection error',err));});
+ peer.on('error',err=>{console.warn('peer error',err&&err.type,err);clearTimeout(to);fail(netErr(err));});
 }
 let posAcc=0,hbAt=0;
 // both sides ping every 2 s; 10 s of silence counts as a dropped connection
 function netHeartbeat(now){if(NET.mode==='solo'||now-hbAt<2000)return;hbAt=now;
- if(NET.mode==='host'){for(const x of [...NET.members]){if(!x.conn)continue;if(x.conn.open)x.conn.send({t:'hb'});if(now-(x.seen||now)>10000){try{x.conn.close();}catch(_){}hostDrop(x.conn);}}}
+ if(NET.mode==='host'){const pr=NET.peer;if(pr&&pr.disconnected&&!pr.destroyed){netMsg('Lost the matchmaking server; reconnecting. Friends can\'t join until it\'s back.');try{pr.reconnect();}catch(_){}}
+  for(const x of [...NET.members]){if(!x.conn)continue;if(x.conn.open)x.conn.send({t:'hb'});if(now-(x.seen||now)>10000){try{x.conn.close();}catch(_){}hostDrop(x.conn);}}}
  else{netSend({t:'hb'});if(now-(NET.seen||now)>10000)leaveRoom('Lost connection to the host.');}}
 function clientData(d){
  if(!d||typeof d!=='object')return;
