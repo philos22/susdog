@@ -119,6 +119,10 @@ form.settings{display:grid;gap:14px;align-content:start}
 .card .nm{font-family:var(--display);font-weight:600;font-size:15px}
 .card .st{font-size:12px;color:var(--dim)}
 .card.dead{opacity:.4}
+.card.reporter{border-color:var(--crew);box-shadow:0 0 0 2px var(--crew) inset}
+.card.victim{opacity:1;border-color:var(--alarm);box-shadow:0 0 0 2px var(--alarm) inset;background:color-mix(in srgb,var(--alarm) 14%,var(--plate))}
+.card .badge{display:inline-block;margin-left:6px;vertical-align:2px;white-space:nowrap;font-family:var(--display);font-size:10px;font-weight:700;letter-spacing:.1em;padding:2px 6px;border-radius:3px;background:var(--crew);color:#06121c}
+.card.victim .badge{background:var(--alarm);color:#fff}
 .card.sel{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset}
 .card .chips{display:flex;gap:3px;flex-wrap:wrap;margin-top:3px}
 .chip{width:12px;height:12px;border-radius:50%;border:1px solid rgba(0,0,0,.5)}
@@ -309,9 +313,11 @@ const STATIONS=[
 const DUR={wires:5,clear:6,sequence:5,tune:5,hold:6,align:4,scan:9};
 const VENTS=[
  {x:1.5,y:20.5,g:0},{x:1.5,y:31.5,g:0},{x:14.5,y:30.5,g:0},{x:8.5,y:1.5,g:1},{x:25.5,y:5.5,g:1},{x:53.5,y:7.5,g:1},{x:48.5,y:20.5,g:2},{x:60.5,y:25.5,g:2},{x:48.5,y:32.5,g:2},
+ {x:36.5,y:2.5,g:3},{x:34.5,y:10.5,g:3},{x:35.5,y:25.5,g:3},
 ];
 const BUTTON={x:31,y:16}, BUTTON_STAND={x:31,y:17.7};
 const LIGHTS={x:42.5,y:31.5};
+const LIGHTS_TIME=3,CORE_TIME=4;
 const CORE={A:{x:13.5,y:12.5},B:{x:60.5,y:18.5}};
 [...STATIONS,...VENTS,BUTTON,BUTTON_STAND,LIGHTS,CORE.A,CORE.B].forEach(p=>{p.x*=T;p.y*=T;});
 STATIONS.forEach((s,i)=>s.id=i);
@@ -560,7 +566,7 @@ function botUpdate(b,dt){
   if(dist(b,p)<1.4*T||followPath(b,dt,SPEED.bot*1.2)){ai.holding=ai.coreAssign;}return;}
  if(G.sab&&G.sab.type==='lights'&&ai.lightsFixer){
   if(!ai.lightGoing){pathTo(b,LIGHTS.x,LIGHTS.y+14);ai.lightGoing=true;ai.state='fix';b.scanning=0;}
-  if(followPath(b,dt,SPEED.bot*1.1)||dist(b,LIGHTS)<1.3*T){ai.wait=2.2;ai.lightsFixer=false;ai.lightGoing=false;setTimeout(()=>{if(G&&G.phase==='play'&&b.alive)fixLights();},2100);}return;}
+  if(followPath(b,dt,SPEED.bot*1.1)||dist(b,LIGHTS)<1.3*T){ai.wait=4.5;ai.lightsFixer=false;ai.lightGoing=false;setTimeout(()=>{if(G&&G.phase==='play'&&b.alive)fixLights();},4400);}return;}
  if(b.imp)impBrain(b,dt);else crewBrain(b,dt);
 }
 function crewBrain(b,dt){
@@ -768,13 +774,21 @@ function openButton(){openMisc('Mess Hall','Emergency meeting',el=>{
  b.onclick=()=>{player.button--;closeModals();if(NET.mode==='client')netSend({t:'button'});else callMeeting(player,'button');};el.appendChild(b);el.appendChild(p);
  if(!b.disabled){p.textContent+=' Press Enter to call it.';mgKey={down:k=>{if(k==='enter'||k===' ')b.onclick();}};}});}
 function openLights(){miscKind='lights';openMisc('Power Grid','Reset the breakers',el=>{const w=document.createElement('div');w.className='switches';el.appendChild(w);
- const render=()=>{if(!G.sab||!G.sab.sw)return;lastSw=JSON.stringify(G.sab.sw);w.innerHTML='';G.sab.sw.forEach((on,i)=>{const b=document.createElement('button');b.type='button';b.className=on?'on':'';b.setAttribute('aria-label','Breaker '+(i+1));b.onclick=()=>{G.sab.sw[i]=!G.sab.sw[i];sfx('tick');if(NET.mode==='client')netSend({t:'flip',i,on:G.sab.sw[i]});if(G.sab.sw.every(Boolean)){closeModals();if(NET.mode!=='client')fixLights();}else render();};w.appendChild(b);});};
+ const render=()=>{if(!G.sab||!G.sab.sw)return;lastSw=JSON.stringify(G.sab.sw);w.innerHTML='';G.sab.sw.forEach((on,i)=>{const b=document.createElement('button');b.type='button';b.className=on?'on':'';b.setAttribute('aria-label','Breaker '+(i+1));b.onclick=()=>{G.sab.sw[i]=!G.sab.sw[i];sfx('tick');if(NET.mode==='client')netSend({t:'flip',i,on:G.sab.sw[i]});render();};w.appendChild(b);});};
  mgKey={down:k=>{const d=digit(k);if(d&&d<=G.sab.sw.length)w.children[d-1].onclick();}};
- lightsRender=render;render();hint(el,'Flip every breaker up to bring the lights back. Keys 1-5 flip breakers left to right.');});}
-function openCore(k){miscKind='core';openMisc(roomName(CORE[k].x,CORE[k].y),'Core scanner '+k,el=>{const b=document.createElement('button');b.className='holdbtn';b.type='button';b.textContent='Hold palm on scanner';el.appendChild(b);const h=hint(el,'');
+ const rb=document.createElement('button');rb.className='holdbtn';rb.type='button';rb.style.marginTop='12px';el.appendChild(rb);
+ const pr=document.createElement('div');pr.className='prog';pr.innerHTML='<div></div>';el.appendChild(pr);
+ let held=false,p=0,fin=false;rb.onpointerdown=e=>{held=true;rb.setPointerCapture(e.pointerId);};rb.onpointerup=rb.onpointercancel=()=>held=false;
+ lightsRender=render;render();hint(el,`Flip every breaker up (keys 1-5), then hold Restore power (or Space) for ${LIGHTS_TIME} seconds.`);
+ return loop(dt=>{if(fin||!G.sab||G.sab.type!=='lights')return;const up=G.sab.sw.every(Boolean),on=up&&(held||kHeld(' '));
+  if(!up)p=0;else if(on)p=Math.min(1,p+dt/LIGHTS_TIME);
+  rb.disabled=!up;rb.textContent=!up?'Flip every breaker up first':on?`Restoring power ${Math.floor(p*100)}%`:(p>0?`Paused at ${Math.floor(p*100)}%`:'Hold to restore power');
+  pr.firstChild.style.width=(p*100)+'%';
+  if(p>=1){fin=true;closeModals();if(NET.mode==='client')netSend({t:'restore'});else fixLights();}});});}
+function openCore(k){miscKind='core';openMisc(roomName(CORE[k].x,CORE[k].y),'Core scanner '+k,el=>{const b=document.createElement('button');b.className='holdbtn';b.type='button';b.textContent='Hold palm on scanner';el.appendChild(b);const pr=document.createElement('div');pr.className='prog';pr.innerHTML='<div></div>';el.appendChild(pr);const h=hint(el,'');
  b.onpointerdown=e=>{setHold(k);b.setPointerCapture(e.pointerId);};b.onpointerup=b.onpointercancel=()=>setHold(null);
  let kb=false;
- return loop(()=>{if(!G.sab||G.sab.type!=='core'){closeModals();return;}if(kHeld(' ')){setHold(k);kb=true;}else if(kb){kb=false;setHold(null);}const o=k==='A'?'B':'A';const other=coreHeld(o);h.textContent=`Scanner ${o}: ${other?'held':'nobody there yet'}. Both must be held at once. Hold Space to keep your palm on it.`;b.textContent=myHold===k?'Holding…':'Hold palm on scanner';});});}
+ return loop(()=>{if(!G.sab||G.sab.type!=='core'){closeModals();return;}if(kHeld(' ')){setHold(k);kb=true;}else if(kb){kb=false;setHold(null);}const o=k==='A'?'B':'A';const other=coreHeld(o);const pg=(G.sab.prog||0)/CORE_TIME;pr.firstChild.style.width=(pg*100)+'%';h.textContent=`Scanner ${o}: ${other?'held':'nobody there yet'}. Both scanners must be held together for ${CORE_TIME} seconds; letting go drains the progress. Hold Space to keep your palm on it.`;b.textContent=myHold===k?'Holding…':'Hold palm on scanner';});});}
 let myHold=null,sentHold=null,miscKind=null,lightsRender=null,lastSw='';
 function setHold(k){myHold=k;if(NET.mode==='client'){if(k!==sentHold){sentHold=k;netSend({t:'hold',k});}return;}
  if(G&&G.sab&&G.sab.type==='core'){if(k)G.sab.holds[player.id]=k;else delete G.sab.holds[player.id];}}
@@ -816,7 +830,7 @@ function callMeeting(caller,kind,body){
    if(near.length){w.sus[e.id]+=45;w.reason[e.id]=roomName(near[0].x,near[0].y);}
    if(away){w.sus[e.id]-=30;w.reason[e.id]='alibi:'+roomName(sg.find(s=>Math.abs(s.t-bd.t)<3).x,sg.find(s=>Math.abs(s.t-bd.t)<3).y);}}}
  G.meet={t:0,dur:65,lines:[],li:0,next:1.4,votes:{},accused:{},sel:null,caller,kind,body,ended:false,revealT:0,refT:body?body.t:G.time-5,lie:{},caught:{}};
- netAll({t:'meet',caller:caller.id,kind,body:body?{name:body.name,room:body.room}:null,dur:G.meet.dur,alive:G.ents.map(e=>e.alive?1:0)});
+ netAll({t:'meet',caller:caller.id,kind,body:body?{name:body.name,room:body.room,id:body.id}:null,dur:G.meet.dur,alive:G.ents.map(e=>e.alive?1:0)});
  const lines=G.meet.lines=buildChat(caller,kind,body);
  const chatEnd=1.4+lines.length*2.2;
  for(const e of G.ents)if(e.isBot&&e.alive)e.ai.voteAt=Math.min(G.meet.dur-3,chatEnd+rand(1,10));
@@ -885,10 +899,13 @@ function renderMeeting(){
 }
 function renderCards(){
  const m=G.meet;const box=$('#cards');box.innerHTML='';
- for(const e of G.ents){const b=document.createElement('button');b.type='button';b.className='card'+(e.alive?'':' dead')+(m.sel===e.id?' sel':'');b.disabled=!e.alive||!player.alive||m.votes[player.id]!==undefined||m.ended;
+ for(const e of G.ents){const b=document.createElement('button');b.type='button';const isVictim=m.kind==='body'&&m.body&&m.body.id===e.id,isCaller=m.caller===e;
+  b.className='card'+(e.alive?'':' dead')+(m.sel===e.id?' sel':'')+(isCaller?' reporter':'')+(isVictim?' victim':'');
+  const badge=isVictim?'<span class="badge">BODY</span>':isCaller?`<span class="badge">${m.kind==='body'?'REPORTED':'CALLED MEETING'}</span>`:'';b.disabled=!e.alive||!player.alive||m.votes[player.id]!==undefined||m.ended;
   const voted=m.votes[e.id]!==undefined;const showImp=player.imp&&e.imp;
   let chips='';if(m.ended){for(const v in m.votes)if(m.votes[v]===e.id)chips+=`<span class="chip" style="background:${G.ents[v].color}"></span>`;}
   b.innerHTML=`<img alt="" src="${droneIcon(e.color,!e.alive,showImp)}"><div><div class="nm"${showImp?' style="color:var(--alarm)"':''}>${esc(e.name)}${e===player?' (you)':''}</div><div class="st">${!e.alive?'Dead':voted?'Voted':'Thinking…'}</div><div class="chips">${chips}</div></div>`;
+  if(badge)b.querySelector('.nm').insertAdjacentHTML('beforeend',badge);if(isVictim)b.querySelector('.st').textContent='Body found in '+m.body.room;
   b.onclick=()=>{m.sel=m.sel===e.id?null:e.id;renderCards();renderVoteBar();};box.appendChild(b);}
  if(m.ended){let sk='';for(const v in m.votes)if(m.votes[v]==='skip')sk+=`<span class="chip" style="background:${G.ents[v].color}"></span>`;const d=document.createElement('div');d.className='card';d.innerHTML=`<div></div><div><div class="nm">Skipped</div><div class="chips">${sk}</div></div>`;box.appendChild(d);}
  renderVoteBar();
@@ -1058,7 +1075,7 @@ function hudUpdate(){
  const al=$('#alert');
  if(G.sab){al.hidden=false;al.classList.add('pulse');
   if(G.sab.type==='lights')al.textContent='Lights are out. Reset the breakers in Power Grid.';
-  else al.textContent=`Core meltdown in ${Math.ceil(G.sab.t)} s. Hold scanner A in Engine Bay and B on the Bridge. A ${coreHeld('A')?'held':'open'} · B ${coreHeld('B')?'held':'open'}`;}
+  else al.textContent=`Core meltdown in ${Math.ceil(G.sab.t)} s. Hold scanner A in Engine Bay and B on the Bridge together. A ${coreHeld('A')?'held':'open'} · B ${coreHeld('B')?'held':'open'}${G.sab.prog>0?` · stabilizing ${Math.floor(G.sab.prog/CORE_TIME*100)}%`:''}`;}
  else{const locked=Object.keys(G.doorLock);if(locked.length){al.hidden=false;al.classList.remove('pulse');al.textContent='Doors sealed: '+locked.map(k=>ROOMS.find(r=>r.key===k).name).join(', ');}else al.hidden=true;}
  if(!$('#mapModal').hidden)drawMap();
 }
@@ -1144,7 +1161,7 @@ function tick(now,draw){
   G.sabCd=Math.max(0,G.sabCd-dt);for(const k in G.doorCd)G.doorCd[k]=Math.max(0,G.doorCd[k]-dt);
   for(const k in G.doorLock){G.doorLock[k]-=dt;if(G.doorLock[k]<=0){delete G.doorLock[k];for(const d of ROOMS.find(r=>r.key===k).doors)if(grid[d]===2)grid[d]=1;}}
   if(G.sab){const s=G.sab;
-   if(s.type==='core'){s.t-=dt;s.assignT-=dt;if(s.assignT<=0){assignCore();s.assignT=3;}if(coreHeld('A')&&coreHeld('B')){endSab();closeModals();toast('Core stabilized');sfx('ok');netAll({t:'fx',toast:'Core stabilized',sfx:'ok',close:1});}else if(s.t<=0){endGame('imp','The core melted down.');}}
+   if(s.type==='core'){s.t-=dt;s.assignT-=dt;if(s.assignT<=0){assignCore();s.assignT=3;}s.prog=clamp((s.prog||0)+(coreHeld('A')&&coreHeld('B')?dt:-dt*1.5),0,CORE_TIME);if(s.prog>=CORE_TIME){endSab();closeModals();toast('Core stabilized');sfx('ok');netAll({t:'fx',toast:'Core stabilized',sfx:'ok',close:1});}else if(s.t<=0){endGame('imp','The core melted down.');}}
    else if(s.type==='lights'&&s.fixerAt&&G.time>s.fixerAt){s.fixerAt=0;const c=G.ents.filter(e=>e.isBot&&e.alive&&!e.imp&&e.ai.state!=='report').sort((a,b)=>dist(a,LIGHTS)-dist(b,LIGHTS))[0];if(c)c.ai.lightsFixer=true;}}
   for(const e of G.ents)if(e.isBot)botUpdate(e,dt);
   percAcc+=dt;if(percAcc>.25){percAcc=0;if(G.phase==='play')perceive();}
@@ -1280,7 +1297,8 @@ function onClientMsg(e,m){
  case 'vent':if(!play||!e.imp||!e.alive)return;if(e.inVent)exitVent(e);else{const v=VENTS.find(v=>dist(e,v)<1.6*T);if(v)enterVent(e,v);}break;
  case 'crawl':{const o=VENTS[m.v];if(play&&e.inVent&&o&&o.g===e.inVent.g&&o!==e.inVent){e.inVent=o;e.x=o.x;e.y=o.y;e.tp++;}break;}
  case 'sab':if(!play||!e.imp)return;if(m.type==='doors'){const r=ROOMS.find(r=>r.key===m.room);if(r)sabotage('doors',r);}else if(m.type==='lights'||m.type==='core')sabotage(m.type);break;
- case 'flip':if(play&&G.sab&&G.sab.type==='lights'&&e.alive&&dist(e,LIGHTS)<2.5*T&&G.sab.sw[m.i]!==undefined){G.sab.sw[m.i]=!!m.on;if(G.sab.sw.every(Boolean))fixLights();}break;
+ case 'flip':if(play&&G.sab&&G.sab.type==='lights'&&e.alive&&dist(e,LIGHTS)<2.5*T&&G.sab.sw[m.i]!==undefined)G.sab.sw[m.i]=!!m.on;break;
+ case 'restore':if(play&&G.sab&&G.sab.type==='lights'&&e.alive&&dist(e,LIGHTS)<2.5*T&&G.sab.sw.every(Boolean))fixLights();break;
  case 'hold':if(G.sab&&G.sab.type==='core'){if(m.k==='A'||m.k==='B')G.sab.holds[e.id]=m.k;else delete G.sab.holds[e.id];}break;
  case 'chat':if(G.phase==='meeting'&&G.meet&&!G.meet.ended&&e.alive&&typeof m.text==='string'&&m.text.trim())humanChat(e,m.text.trim().slice(0,90));break;
  case 'vote':if(G.phase==='meeting'&&G.meet&&e.alive){const t=m.target==='skip'?'skip':(G.ents[m.target]&&G.ents[m.target].alive?m.target:null);if(t!==null)castVote(e,t);}break;
@@ -1291,7 +1309,7 @@ function sendSnaps(){
  if(G.phase!=='play'&&G.phase!=='reveal')return;
  const sealed=[];for(const r of ROOMS)for(const k of r.doors)if(grid[k]===2)sealed.push(k);
  const pct=TOTAL()?DONE()/TOTAL():0;
- const sab=G.sab?{type:G.sab.type,t:G.sab.t,sw:G.sab.sw,held:G.sab.type==='core'?{A:coreHeld('A'),B:coreHeld('B')}:null}:null;
+ const sab=G.sab?{type:G.sab.type,t:G.sab.t,sw:G.sab.sw,held:G.sab.type==='core'?{A:coreHeld('A'),B:coreHeld('B')}:null,prog:G.sab.prog||0}:null;
  for(const r of G.ents){if(!r.conn||!r.conn.open)continue;
   const ghost=!r.alive,R=(visionR(r)+1.5)*T,sees=(x,y)=>ghost||(Math.hypot(x-r.x,y-r.y)<=R&&los(r.x,r.y,x,y));
   const ents=[];for(const e of G.ents){if(e===r||e.inVent)continue;if(!e.alive&&(!ghost||e.ejected))continue;if(!sees(e.x,e.y))continue;
