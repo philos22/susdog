@@ -1180,7 +1180,8 @@ function leaveRoom(msg){
 function hostRoom(){
  S.name=($('#pname').value.trim()||'Nova').slice(0,12);netMsg('Opening a room…');
  const code=newCode(),peer=new Peer(PEER_PREFIX+code,{debug:0});NET.peer=peer;
- peer.on('open',()=>{if(NET.peer!==peer)return;Object.assign(NET,{mode:'host',code,members:[{name:S.name,color:S.color,conn:null}]});setRoomUI();lobbyAll();});
+ peer.on('open',()=>{if(NET.peer!==peer)return;Object.assign(NET,{mode:'host',code,members:[{name:S.name,color:S.color,conn:null}]});setRoomUI();lobbyAll();
+  checkRoutes().then(g=>{if(!g.host&&NET.peer===peer)netMsg('Warning: friends may not be able to connect. '+routeText(g));});});
  peer.on('connection',conn=>{conn.on('data',d=>hostData(conn,d));conn.on('close',()=>hostDrop(conn));conn.on('error',()=>hostDrop(conn));});
  peer.on('disconnected',()=>{if(NET.peer===peer&&NET.mode==='host')try{peer.reconnect();}catch(_){}});
  peer.on('open',()=>{if(NET.peer===peer&&NET.mode==='host')lobbyAll();});
@@ -1257,6 +1258,13 @@ function sendSnaps(){
 }
 
 /* client side: a mirror of the host's game, enough to draw and act */
+// which connection routes this browser can offer: local network, public address, relay
+let routeInfo=null;
+function checkRoutes(){if(routeInfo)return routeInfo;routeInfo=new Promise(res=>{const got={host:false,srflx:false,relay:false};
+ try{const pc=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:['turn:eu-0.turn.peerjs.com:3478','turn:us-0.turn.peerjs.com:3478'],username:'peerjs',credential:'peerjsp'}]});
+  pc.createDataChannel('probe');pc.onicecandidate=e=>{if(e.candidate){const m=/ typ (\w+)/.exec(e.candidate.candidate);if(m&&m[1] in got)got[m[1]]=true;}};
+  pc.createOffer().then(o=>pc.setLocalDescription(o));setTimeout(()=>{try{pc.close();}catch(_){}res(got);},4000);}catch(_){res(got);}});return routeInfo;}
+const routeText=g=>`Your browser offered: local network ${g.host?'yes':'NO'}, public address ${g.srflx?'yes':'no'}, relay ${g.relay?'yes':'no'}.`+(g.host?'':' Something is hiding your local network address, usually a privacy extension or browser setting (Brave, Firefox and some extensions do this).');
 function joinRoom(){
  const code=$('#joinCode').value.trim().toUpperCase();if(!/^[A-Z0-9]{5}$/.test(code)){netMsg('Enter the 5-character room code.');return;}
  if(NET.peer){try{NET.peer.destroy();}catch(_){}NET.peer=null;}
@@ -1267,9 +1275,10 @@ function joinRoom(){
  const peer=new Peer({debug:1});NET.peer=peer;
  const fail=t=>{if(NET.peer===peer)leaveRoom(t);};
  const to=setTimeout(()=>{if(NET.peer!==peer||NET.mode==='client')return;
-  fail(['Couldn\'t reach the matchmaking server (0.peerjs.com). An ad blocker, VPN, network filter or in-app browser may be blocking it. Try a regular browser window, or another network.',
-   'Found the room but couldn\'t connect to the host. The network may be blocking direct connections; try a phone hotspot.',
-   'Connected, but the host didn\'t answer. Ask the host to check their game tab is still open.'][stage]);},15000);
+  const msg=['Couldn\'t reach the matchmaking server (0.peerjs.com). An ad blocker, VPN, network filter or in-app browser may be blocking it. Try a regular browser window, or another network.',
+   'Found the room but couldn\'t connect to the host. Both players need to be on the same Wi-Fi, and that Wi-Fi must let devices reach each other.',
+   'Connected, but the host didn\'t answer. Ask the host to check their game tab is still open.'][stage];
+  if(stage===1)checkRoutes().then(g=>fail(msg+' '+routeText(g)));else fail(msg);},15000);
  peer.on('open',()=>{if(NET.peer!==peer)return;say(1,'Connecting to the host…');
   const conn=peer.connect(PEER_PREFIX+code,{reliable:true,serialization:'json'});NET.conn=conn;
   conn.on('open',()=>{say(2,'Joining the room…');conn.send({t:'hello',name:S.name,color:S.color});});
