@@ -214,7 +214,7 @@ form.settings{display:grid;gap:14px;align-content:start}
         <kbd>E</kbd><span>Use a console, panel or the meeting button</span>
         <kbd>R</kbd><span>Report a body you are standing near</span>
         <kbd>Q / V / X</kbd><span>Saboteur: kill, enter a duct, open or close sabotage (then L cuts lights, C starts a core meltdown). In a duct, arrow keys crawl to the next one</span>
-        <kbd>M</kbd><span>Ship map</span>
+        <kbd>M / X</kbd><span>Map and tasks (you can keep walking while it's open)</span>
       </div>
     </div>
     <form class="settings" id="setup">
@@ -652,7 +652,7 @@ addEventListener('keydown',e=>{
   if(player.imp&&(k==='l'||k==='c')){if(!e.repeat)$(k==='l'?'#sLights':'#sCore').click();return;}}
  if(modalOpen()){if(mgKey&&mgKey.down)mgKey.down(k,e);return;}
  if(player.inVent&&VENT_DIRS[k]){if(!e.repeat){const d=VENT_DIRS[k],o=ventToward(player.inVent,d[0],d[1]);if(o)crawlTo(o);}return;}
- if(k==='e')doUse();if(k==='r')doReport();if(k==='q')doKill();if(k==='v')doVent();if(k==='x'&&player.imp)openMap(true);if(k==='m'||k==='tab'){e.preventDefault();openMap(false);}
+ if(k==='e')doUse();if(k==='r')doReport();if(k==='q')doKill();if(k==='v')doVent();if(k==='x')openMap(player.imp);if(k==='m'||k==='tab'){e.preventDefault();openMap(false);}
 });
 addEventListener('keyup',e=>{const k=keyName(e);keys[k]=false;if(mgKey&&mgKey.up)mgKey.up(k);});
 addEventListener('blur',clearKeys);
